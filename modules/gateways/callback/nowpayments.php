@@ -23,28 +23,31 @@ $requestData = json_decode($requestJson, true);
 
 logTransaction($gatewayParams['name'], $requestData, 'Request accepted from NOWPayments.');
 
-// Sort array keys recursively so nested objects (e.g. "fee") are also sorted.
-function ksortRecursive(array &$data): void
-{
-    ksort($data);
-    foreach ($data as &$value) {
-        if (is_array($value)) {
-            ksortRecursive($value);
-        }
-    }
-}
-
-// PHP's json_encode uses scientific notation for very small floats (e.g. 1.6e-5).
-// NOWPayments (Node.js) serializes the same value as 0.000016, producing a
-// different string and therefore a different HMAC.  Convert any scientific-
-// notation numbers in the encoded JSON back to plain decimal form.
+// PHP's json_encode uses scientific notation for very small floats (e.g. 7.5e-5).
+// NOWPayments (Node.js) serializes the same value as 0.000075, producing a
+// different string and therefore a different HMAC. Convert sci-notation numbers
+// back to plain decimal form via string manipulation — going through (float)
+// reintroduces binary precision artifacts (7.5e-5 -> 0.00007499999999999999).
 function normalizeSciNotation(string $json): string
 {
     return preg_replace_callback(
-        '/(?<=[:\[,{])-?(?:0|[1-9]\d*)(?:\.\d+)?[eE][+-]?\d+/',
+        '/(?<=[:\[,])(-?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)/',
         function (array $m): string {
-            $n = rtrim(sprintf('%.20F', (float)$m[0]), '0');
-            return rtrim($n, '.') ?: '0';
+            $sign     = $m[1];
+            $intPart  = $m[2];
+            $fracPart = $m[3];
+            $exp      = (int)$m[4];
+
+            $digits     = $intPart . $fracPart;
+            $decimalPos = strlen($intPart) + $exp;
+
+            if ($decimalPos <= 0) {
+                return $sign . '0.' . str_repeat('0', -$decimalPos) . $digits;
+            }
+            if ($decimalPos >= strlen($digits)) {
+                return $sign . $digits . str_repeat('0', $decimalPos - strlen($digits));
+            }
+            return $sign . substr($digits, 0, $decimalPos) . '.' . substr($digits, $decimalPos);
         },
         $json
     );
@@ -62,7 +65,11 @@ function checkIpnRequest()
 
         if ($requestJson !== false && !empty($requestJson)) {
             $sorted_data = $requestData;
-            ksortRecursive($sorted_data);
+            // Use flat ksort (top-level keys only) to match NowPayments' Node.js
+            // JSON.stringify(params, Object.keys(params).sort()) behaviour.
+            // Recursive sorting of nested objects (e.g. "fee") produces a different
+            // string than what NowPayments signs on their end.
+            ksort($sorted_data);
             $sorted_request_json = json_encode($sorted_data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
             $sorted_request_json = normalizeSciNotation($sorted_request_json);
 
@@ -72,7 +79,12 @@ function checkIpnRequest()
             if ($hmac == $recived_hmac) {
                 return true;
             } else {
-                logTransaction($gatewayParams['name'], $requestData, 'HMAC signature does not match');
+                logTransaction($gatewayParams['name'], array_merge($requestData, [
+                    '_debug_computed_hmac' => $hmac,
+                    '_debug_received_hmac' => $recived_hmac,
+                    '_debug_raw_json'      => $requestJson,
+                    '_debug_sorted_json'   => $sorted_request_json,
+                ]), 'HMAC signature does not match');
                 die('HMAC signature does not match');
             }
         } else {
