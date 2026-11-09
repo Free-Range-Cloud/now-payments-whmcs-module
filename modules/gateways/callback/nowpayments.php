@@ -147,7 +147,7 @@ if ($success) {
         );
         $currency = $requestData['pay_currency'];
         $upper = mb_strtoupper($currency);
-        $message = "Invoice ${invoiceId} has been paid. Amount received: ${paymentAmount} ${upper}";
+        $message = "Invoice {$invoiceId} has been paid. Amount received: {$paymentAmount} {$upper}";
         logTransaction($gatewayParams['name'], $requestData, $message);
 
     } else if ($status == "partially_paid") {
@@ -163,7 +163,7 @@ if ($success) {
         );
         $currency = $requestData['pay_currency'];
         $upper = mb_strtoupper($currency);
-        $message = "Your payment ${$invoiceId} is partially paid. Please contact support@nowpayments.io. Expected amount received: ${paymentAmount} ${upper}. Amount received: ${actuallyPaid} ${upper}. " . "ID invoice: " . $requestData['payment_id'] . ".";
+        $message = "Your payment {$invoiceId} is partially paid. Please contact support@nowpayments.io. Expected amount received: {$paymentAmount} {$upper}. Amount received: {$actuallyPaid} {$upper}. " . "ID invoice: " . $requestData['payment_id'] . ".";
         logTransaction($gatewayParams['name'], $requestData, $message);
 
     } else if ($status == "confirming") {
