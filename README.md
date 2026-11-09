@@ -14,11 +14,21 @@ The upstream developer has indicated there are no plans to fix this. This fork a
 - **Non-recursive key sorting** — The original `ksort()` call only sorted top-level keys. Nested objects (such as the `fee` field) were left unsorted, which would cause HMAC failures on affected payloads.
 - **Empty gateway logs** — NOWPayments sends IPN data as a JSON body (`application/json`), not as form-encoded POST. The original code logged `$_POST`, which is always empty for JSON requests, making debugging impossible.
 
+## API-only checkout
+
+NOWPayments has disabled their hosted WHMCS integration (the `nowpayments.io/payment?data=...` link with `dataSource: whmcs`). This fork no longer uses it. Instead:
+
+1. The invoice page shows a **Pay Now** button that posts to `modules/gateways/nowpayments/pay.php`.
+2. `pay.php` checks that the logged-in client owns the invoice and that it is unpaid. It then calls the NOWPayments REST API (`POST /v1/invoice`) with your API key and redirects the customer to the returned `invoice_url`.
+3. NOWPayments sends IPN callbacks to `modules/gateways/callback/nowpayments.php`, which verifies the HMAC and applies the payment.
+
+A NOWPayments invoice is created only when the customer clicks Pay, not every time the invoice page is viewed. API requests and responses are recorded in **Utilities > Logs > Module Log** (with debug logging enabled), and the API key is masked.
+
 ## Installation
 
 1. Copy the `modules/` directory into your WHMCS root.
 2. In the WHMCS admin panel, go to **Setup > Payment Gateways** and activate **NOWPayments**.
-3. Enter your **API Key** and **IPN Secret** from your NOWPayments dashboard.
+3. Enter your **API Key** and **IPN Secret** from your NOWPayments dashboard (Store Settings). Optionally enable *Fee paid by customer*, *Fixed rate*, or *Sandbox mode*.
 4. Under **Setup > General Settings**, ensure the **WHMCS System URL** is set correctly — this is used to construct the IPN callback URL.
 
 ## Disclaimer
